@@ -85,23 +85,6 @@ const iniciarBot = async () => {
 		adapterFlow = createFlow(flujos);
 		adapterProvider = createProvider(BaileysProvider);
 
-		// Esperamos un poco hasta que internamente Baileys se conecte
-		setTimeout(() => {
-			// ⚠️ Hack: acceder al socket internamente
-			const sock = adapterProvider?.vendor;
-			console.log({
-				sock,
-			});
-
-			console.log(sock?.ws.socket?.readyState);
-			console.log(sock?.user);
-
-			adapterProvider.on("ready", () => {
-				console.log("✅ Proveedor conectado y listo");
-				statusRef.set({ status: "connected", timestamp: Date.now() });
-			});
-		}, 3000);
-
 		botInstance = createBot({
 			flow: adapterFlow,
 			provider: adapterProvider,
