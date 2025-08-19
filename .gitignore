@@ -69,4 +69,8 @@ node_modules/
 .dataconnect
 
 /cred
-
+bot.qr.png
+*.png
+*.jpg
+*.jpeg
+*.gif
