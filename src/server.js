@@ -32,7 +32,7 @@ app.get("/health", (req, res) => {
 	res.json({ ok: true, env: process.env.NODE_ENV || "development" });
 });
 
-app.get("/admin/pm2/list", apiKeyAuth, adminLimiter, async (req, res) => {
+app.get("/admin/server/list", apiKeyAuth, adminLimiter, async (req, res) => {
 	try {
 		const list = await listPm2();
 		const data = list.map((p) => ({
@@ -53,23 +53,30 @@ app.get("/admin/pm2/list", apiKeyAuth, adminLimiter, async (req, res) => {
 	}
 });
 
-app.post("/admin/pm2/restart", apiKeyAuth, adminLimiter, async (req, res) => {
-	const appName = (req.body?.name || process.env.PM2_APP_NAME || "").trim();
-	if (!appName) {
-		return res.status(400).json({ error: "Falta el nombre de la app (name)" });
-	}
+app.post(
+	"/admin/server/restart",
+	apiKeyAuth,
+	adminLimiter,
+	async (req, res) => {
+		const appName = (req.body?.name || process.env.PM2_APP_NAME || "").trim();
+		if (!appName) {
+			return res
+				.status(400)
+				.json({ error: "Falta el nombre de la app (name)" });
+		}
 
-	try {
-		await restartPm2App(appName);
-		res.json({ ok: true, message: `Reinicio solicitado para "${appName}"` });
-	} catch (e) {
-		res.status(500).json({
-			ok: false,
-			error: `No se pudo reiniciar "${appName}"`,
-			detail: String(e?.message || e),
-		});
+		try {
+			await restartPm2App(appName);
+			res.json({ ok: true, message: `Reinicio solicitado para "${appName}"` });
+		} catch (e) {
+			res.status(500).json({
+				ok: false,
+				error: `No se pudo reiniciar "${appName}"`,
+				detail: String(e?.message || e),
+			});
+		}
 	}
-});
+);
 
 const port = Number(process.env.PORT || 3001);
 app.listen(port, () => {
