@@ -23,10 +23,35 @@ admin.initializeApp({
 });
 
 const db = admin.firestore();
+
 let botInstance = null;
 let adapterFlow = null;
 let adapterProvider = null;
+let adapterDB = null;
 
+// --- ARRANCA EL PORTAL SOLAMENTE UNA VEZ ---
+let portalStarted = false;
+let portalServer = null;
+function startPortalOnce() {
+	if (portalStarted) return;
+	const port = Number(process.env.PORT || 3000);
+	try {
+		// algunos builds aceptan opciones { port }, otros sólo una llamada lisa
+		const maybeServer = QRPortalWeb({ port });
+		portalServer = maybeServer || portalServer;
+		portalStarted = true;
+		console.log(`🛰️ Portal listo en puerto ${port}`);
+	} catch (e) {
+		if (e && e.code === "EADDRINUSE") {
+			console.log(`ℹ️ El portal ya estaba escuchando en ${port}, continúo.`);
+			portalStarted = true; // evita reintentos
+		} else {
+			console.error("❌ No se pudo iniciar el portal:", e);
+		}
+	}
+}
+
+// ------------------- FLOWS -------------------
 const crearFlowDesdeData = (data) => {
 	let childFlows = [];
 	if (data.childrens) {
@@ -42,9 +67,7 @@ const crearFlowDesdeData = (data) => {
 	} else {
 		return addKeyword(data.keywords).addAnswer(
 			data.answers,
-			{
-				delay: 2000,
-			},
+			{ delay: 2000 },
 			null,
 			childFlows
 		);
@@ -69,39 +92,52 @@ const obtenerFlujos = async () => {
 	}
 };
 
+// ------------------- BOOT -------------------
 const iniciarBot = async () => {
 	console.log("⏳ Cargando flujos desde Firestore...");
 	const flujos = await obtenerFlujos();
-
 	if (flujos.length === 0) {
 		console.log("⚠️ No se encontraron flujos, revisa la base de datos.");
 		return;
 	}
 
+	// Provider / DB persisten entre recargas
+	if (!adapterProvider) adapterProvider = createProvider(BaileysProvider);
+	if (!adapterDB) adapterDB = new MockAdapter();
+
+	// Re-crea el flow con la data fresca
+	adapterFlow = createFlow(flujos);
+
 	if (!botInstance) {
-		console.log("🚀 Iniciando el bot...");
-
-		const adapterDB = new MockAdapter();
-		adapterFlow = createFlow(flujos);
-		adapterProvider = createProvider(BaileysProvider);
-
+		console.log("🚀 Iniciando el bot por primera vez...");
 		botInstance = createBot({
 			flow: adapterFlow,
 			provider: adapterProvider,
 			database: adapterDB,
 		});
 
-		QRPortalWeb();
+		// ¡Sólo una vez!
+		startPortalOnce();
 		console.log("✅ Bot iniciado correctamente.");
+	} else {
+		// “Hot reload” del bot: recrea la instancia pero NO inicies el portal de nuevo
+		console.log(
+			"🔁 Actualizando bot con nuevos flujos (sin reiniciar portal)..."
+		);
+		botInstance = createBot({
+			flow: adapterFlow,
+			provider: adapterProvider,
+			database: adapterDB,
+		});
+		console.log("✅ Flujos aplicados.");
 	}
 };
 
-// Escucha en tiempo real cambios en la colección "flows" para actualizar el bot
-db.collection("flows").onSnapshot(async (snapshot) => {
+// Escucha en tiempo real cambios y aplica sin reabrir el puerto
+db.collection("flows").onSnapshot(async () => {
 	console.log("🔄 Flujos actualizados en Firestore, aplicando cambios...");
-	botInstance = null;
-	await iniciarBot();
+	await iniciarBot(); // ya no tocamos QRPortalWeb ni ponemos botInstance = null
 });
 
-// Iniciar el bot una sola vez al ejecutar el script
+// Iniciar el bot al ejecutar el script
 iniciarBot();
